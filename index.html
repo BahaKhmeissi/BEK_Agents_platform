@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BEK Agents Platform</title>
+<meta name="theme-color" content="#0b1220">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d4ed8'/%3E%3Ctext x='32' y='42' font-size='30' text-anchor='middle' fill='white' font-family='Arial' font-weight='700'%3EB%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo">B</span><div><b>BEK Agents Platform</b><small>COD workflow control room</small></div></div>
+  <nav id="nav">
+    <button data-v="room" class="on">Control room</button>
+    <button data-v="board">Scout board</button>
+    <button data-v="settings">Scout settings</button>
+    <button data-v="calc">Calculator</button>
+    <button data-v="data">Data</button>
+  </nav>
+</header>
+
+<main>
+  <!-- CONTROL ROOM -->
+  <section id="v-room" class="view on">
+    <div class="intro">
+      <h1>Your agents, one workflow.</h1>
+      <p>Each character is an agent. You keep the decisions: <b>which products to test</b>, <b>what to do with the creatives</b>, and <b>launching campaigns</b>. The platform stores your coach notes, builds the exact brief to give Claude, and tracks every product through the pipeline.</p>
+    </div>
+    <div class="pipeline" id="pipeline"></div>
+    <div class="agents" id="agents"></div>
+  </section>
+
+  <!-- SCOUT BOARD -->
+  <section id="v-board" class="view">
+    <div class="bar">
+      <h2>Scout board</h2>
+      <div class="actions">
+        <button class="btn" id="addRow">+ Add product</button>
+        <button class="btn ghost" id="importCsv">Import CSV</button>
+        <button class="btn ghost" id="exportCsv">Export CSV</button>
+        <input type="file" id="csvFile" accept=".csv,text/csv" hidden>
+      </div>
+    </div>
+    <p class="muted">Winner rule: running at least <b id="ruleDays">21</b> days and at least <b id="ruleCreatives">6</b> different creatives on the page. Rows that miss it are flagged but kept, because you can override.</p>
+    <div class="tablewrap"><table id="board"></table></div>
+    <div id="detail" class="detail" hidden></div>
+  </section>
+
+  <!-- SCOUT SETTINGS -->
+  <section id="v-settings" class="view">
+    <h2>Scout settings</h2>
+    <p class="muted">Nothing is hard-coded. Change these any time; they are written into every Scout brief.</p>
+    <div class="grid2" id="settingsForm"></div>
+    <div class="card">
+      <h3>Scout brief (copy into Claude)</h3>
+      <pre id="scoutBrief" class="brief"></pre>
+      <button class="btn" id="copyScout">Copy Scout brief</button>
+    </div>
+  </section>
+
+  <!-- CALCULATOR -->
+  <section id="v-calc" class="view">
+    <div class="bar"><h2>COD calculator</h2><a class="btn ghost" target="_blank" rel="noopener" href="https://bahakhmeissi.github.io/cod_calculator/">Open full page ↗</a></div>
+    <p class="muted">Mauritania is included: 7 $ per delivered order, 15 $/kg shipping, 50 $/month storage spread over delivered orders.</p>
+    <iframe class="calc" src="https://bahakhmeissi.github.io/cod_calculator/" title="COD calculator" loading="lazy"></iframe>
+  </section>
+
+  <!-- DATA -->
+  <section id="v-data" class="view">
+    <h2>Data</h2>
+    <p class="muted">Everything is saved in this browser only (coach notes, settings, products). Export a backup file to move it to another device or keep a copy.</p>
+    <div class="actions">
+      <button class="btn" id="exportAll">Export backup (JSON)</button>
+      <button class="btn ghost" id="importAll">Import backup</button>
+      <input type="file" id="jsonFile" accept=".json,application/json" hidden>
+      <button class="btn danger" id="resetAll">Reset everything</button>
+    </div>
+  </section>
+</main>
+
+<div id="modal" class="modal" hidden><div class="sheet"><div class="sheethead"><b id="mTitle"></b><button class="x" id="mClose" aria-label="Close">×</button></div><div id="mBody"></div></div></div>
+<div id="toast" class="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
