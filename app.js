@@ -40,12 +40,22 @@ const DEFAULTS={
   niches:"Health, gadgets (open to any niche)",minDays:21,minCreatives:6,minWeight:0,maxWeight:1000,maxAlibaba:"",
   sources:{adlib:true,sheets:true,alibaba:true,competitors:true},extra:""},
  notes:{},status:{scout:"idle",builder:"idle",swiper:"idle",pricer:"idle",planner:"idle",gemini:"idle",analyst:"idle"},
- rows:[]
+ rows:[],vault:[]
 };
-let S=load();
-function load(){try{const r=JSON.parse(localStorage.getItem(KEY)||"null");if(!r)return structuredClone(DEFAULTS);
-  return {...structuredClone(DEFAULTS),...r,settings:{...DEFAULTS.settings,...(r.settings||{}),sources:{...DEFAULTS.settings.sources,...((r.settings||{}).sources||{})}},status:{...DEFAULTS.status,...(r.status||{})}};}catch(e){return structuredClone(DEFAULTS);}}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){toast("Could not save in this browser");}}
+let S=null,CK=null,SALT=null;
+const VKEY="bek_agents_vault_v2";
+const te=new TextEncoder(),td=new TextDecoder();
+const b64=a=>{const u=new Uint8Array(a);let o="";for(let i=0;i<u.length;i+=8192)o+=String.fromCharCode.apply(null,u.subarray(i,i+8192));return btoa(o);};
+const unb64=t=>Uint8Array.from(atob(t),c=>c.charCodeAt(0));
+async function deriveKey(pass,salt){const km=await crypto.subtle.importKey("raw",te.encode(pass),"PBKDF2",false,["deriveKey"]);return crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:310000,hash:"SHA-256"},km,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);}
+async function encryptState(){const iv=crypto.getRandomValues(new Uint8Array(12));const ct=await crypto.subtle.encrypt({name:"AES-GCM",iv},CK,te.encode(JSON.stringify(S)));localStorage.setItem(VKEY,JSON.stringify({v:2,salt:b64(SALT),iv:b64(iv),data:b64(ct)}));}
+async function decryptState(pass){const o=JSON.parse(localStorage.getItem(VKEY));SALT=unb64(o.salt);CK=await deriveKey(pass,SALT);const pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:unb64(o.iv)},CK,unb64(o.data));return norm(JSON.parse(td.decode(pt)));}
+function norm(r){const d=structuredClone(DEFAULTS);if(!r||typeof r!=="object")return d;return {...d,...r,settings:{...d.settings,...(r.settings||{}),sources:{...d.settings.sources,...((r.settings||{}).sources||{})}},status:{...d.status,...(r.status||{})},rows:Array.isArray(r.rows)?r.rows:[],vault:Array.isArray(r.vault)?r.vault:[],notes:r.notes||{}};}
+let saveQ=Promise.resolve();
+function save(){clearTimeout(save.t);save.t=setTimeout(flush,150);}
+function flush(){clearTimeout(save.t);if(!CK||!S)return saveQ;saveQ=saveQ.then(encryptState).catch(()=>toast("Could not save in this browser"));return saveQ;}
+document.addEventListener("visibilitychange",()=>{if(document.hidden)flush();});
+window.addEventListener("pagehide",flush);
 
 /* ---------- helpers ---------- */
 function toast(t){const el=$("#toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2200);}
@@ -191,7 +201,7 @@ function renderSettings(){
 
 /* ---------- views ---------- */
 function show(v){$$(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v));$$("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
-  if(v==="settings")renderSettings();if(v==="board")renderBoard();if(v==="room"){renderPipeline();renderAgents();}history.replaceState(null,"","#"+v);window.scrollTo(0,0);}
+  if(v==="vault")renderVault();if(v==="settings")renderSettings();if(v==="board")renderBoard();if(v==="room"){renderPipeline();renderAgents();}history.replaceState(null,"","#"+v);window.scrollTo(0,0);}
 
 function init(){
   $$("#nav button").forEach(b=>b.onclick=()=>show(b.dataset.v));
@@ -202,11 +212,54 @@ function init(){
   $("#importCsv").onclick=()=>$("#csvFile").click();
   $("#csvFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>importCSV(String(rd.result));rd.readAsText(f);e.target.value="";};
   $("#copyScout").onclick=()=>copy(brief("scout"));
-  $("#exportAll").onclick=()=>download("bek-agents-backup.json",JSON.stringify(S,null,2),"application/json");
+  $("#exportAll").onclick=async()=>{await flush();const v=localStorage.getItem(VKEY);if(!v){toast("Nothing to export yet");return;}download("bek-agents-encrypted-backup.json",v,"application/json");};
   $("#importAll").onclick=()=>$("#jsonFile").click();
-  $("#jsonFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const o=JSON.parse(String(rd.result));if(!o||typeof o!=="object"||!Array.isArray(o.rows||[]))throw 0;S={...structuredClone(DEFAULTS),...o};S.settings={...DEFAULTS.settings,...(o.settings||{}),sources:{...DEFAULTS.settings.sources,...((o.settings||{}).sources||{})}};save();show("room");toast("Backup restored");}catch(_){toast("That file is not a valid backup");}};rd.readAsText(f);e.target.value="";};
-  $("#resetAll").onclick=()=>{if(confirm("Erase all notes, settings and products in this browser?")){S=structuredClone(DEFAULTS);save();show("room");}};
-  const h=(location.hash||"#room").slice(1);show(["room","board","settings","calc","data"].includes(h)?h:"room");
+  $("#jsonFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const o=JSON.parse(String(rd.result));if(!o||o.v!==2||!o.salt||!o.iv||!o.data)throw 0;if(!confirm("Replace the data in this browser with this backup? You will unlock it with the passphrase it was made with."))return;localStorage.setItem(VKEY,JSON.stringify(o));location.reload();}catch(_){toast("That file is not an encrypted backup from this app");}};rd.readAsText(f);e.target.value="";};
+  $("#resetAll").onclick=()=>{if(confirm("Erase ALL notes, settings, products and vault secrets in this browser? This cannot be undone.")){localStorage.removeItem(VKEY);localStorage.removeItem(KEY);location.reload();}};
+  $("#lockNow").onclick=()=>{flush().then(()=>location.reload());};
+  $("#vAdd").onclick=()=>{const n=$("#vName").value.trim(),v=$("#vValue").value;if(!n||!v){toast("Enter a name and a value");return;}S.vault.push({id:uid(),name:n,value:v});$("#vName").value="";$("#vValue").value="";save();renderVault();toast("Stored (encrypted)");};
+  const h=(location.hash||"#room").slice(1);show(["room","board","settings","vault","calc","data"].includes(h)?h:"room");
 }
-init();
+function renderVault(){
+  const l=$("#vList");
+  if(!S.vault.length){l.innerHTML='<p class="muted">Nothing stored yet.</p>';return;}
+  l.innerHTML=S.vault.map(x=>`<div class="vrow" data-id="${x.id}"><b>${esc(x.name)}</b><input type="password" readonly value="${esc(x.value)}" aria-label="${esc(x.name)}"><button class="btn ghost sm" data-show>Show</button><button class="btn ghost sm" data-cp>Copy</button><button class="btn danger sm" data-del>Delete</button></div>`).join("");
+  $$(".vrow",l).forEach(r=>{const x=S.vault.find(y=>y.id===r.dataset.id),inp=$("input",r);
+    $("[data-show]",r).onclick=e=>{const sh=inp.type==="password";inp.type=sh?"text":"password";e.target.textContent=sh?"Hide":"Show";};
+    $("[data-cp]",r).onclick=()=>{navigator.clipboard.writeText(x.value).then(()=>toast("Copied")).catch(()=>toast("Copy failed"));};
+    $("[data-del]",r).onclick=()=>{if(confirm("Delete "+x.name+"?")){S.vault=S.vault.filter(y=>y.id!==x.id);save();renderVault();}};});
+}
+
+/* ---------- lock screen ---------- */
+async function start(){
+  const lock=$("#lock"),form=$("#lockForm"),p1=$("#lockPass"),p2=$("#lockPass2"),err=$("#lockErr"),btn=$("#lockBtn");
+  const has=!!localStorage.getItem(VKEY);
+  $("#lockTitle").textContent=has?"Unlock":"Create your passphrase";
+  $("#lockMsg").textContent=has?"Enter your passphrase to open the platform.":"This passphrase encrypts everything on this device. It is never sent anywhere and cannot be recovered. Use 12+ characters.";
+  p2.parentElement.hidden=has;p1.autocomplete=has?"current-password":"new-password";
+  lock.hidden=false;p1.focus();
+  await new Promise(resolve=>{
+    form.onsubmit=async e=>{e.preventDefault();err.textContent="";btn.disabled=true;btn.textContent="Working…";
+      try{
+        if(has){S=await decryptState(p1.value);}
+        else{
+          if(p1.value.length<12){throw new Error("Use at least 12 characters.");}
+          if(p1.value!==p2.value){throw new Error("The two passphrases do not match.");}
+          SALT=crypto.getRandomValues(new Uint8Array(16));CK=await deriveKey(p1.value,SALT);
+          let init=null;try{init=JSON.parse(localStorage.getItem(KEY)||"null");}catch(_){}
+          S=norm(init);await encryptState();localStorage.removeItem(KEY);
+        }
+        p1.value="";p2.value="";resolve();
+      }catch(ex){err.textContent=has?"Wrong passphrase.":(ex.message||"Something went wrong.");btn.disabled=false;btn.textContent=has?"Unlock":"Create and open";}
+    };
+    btn.textContent=has?"Unlock":"Create and open";
+  });
+  lock.hidden=true;
+  // auto-lock after 15 minutes without activity (clears the key from memory by reloading)
+  let t;const arm=()=>{clearTimeout(t);t=setTimeout(()=>flush().then(()=>location.reload()),15*60*1000);};
+  ["mousemove","keydown","click","touchstart"].forEach(ev=>document.addEventListener(ev,arm,{passive:true}));arm();
+  init();
+}
+if(!window.crypto||!crypto.subtle){document.body.innerHTML='<p style="padding:30px;color:#fff">This app needs a secure (HTTPS) browser context.</p>';}
+else start();
 })();

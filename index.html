@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BEK Agents Platform</title>
 <meta name="theme-color" content="#0b1220">
+<meta name="robots" content="noindex,nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src https://bahakhmeissi.github.io; connect-src 'none'; base-uri 'none'; form-action 'none'">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d4ed8'/%3E%3Ctext x='32' y='42' font-size='30' text-anchor='middle' fill='white' font-family='Arial' font-weight='700'%3EB%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -15,8 +17,10 @@
     <button data-v="room" class="on">Control room</button>
     <button data-v="board">Scout board</button>
     <button data-v="settings">Scout settings</button>
+    <button data-v="vault">Vault</button>
     <button data-v="calc">Calculator</button>
     <button data-v="data">Data</button>
+    <button id="lockNow" title="Lock now">🔒 Lock</button>
   </nav>
 </header>
 
@@ -59,6 +63,14 @@
     </div>
   </section>
 
+  <!-- VAULT -->
+  <section id="v-vault" class="view">
+    <h2>Vault</h2>
+    <p class="muted">API keys, tokens and other secrets. They are encrypted with your passphrase and stored only in this browser. They are never added to briefs, never uploaded, and the page is blocked from sending data anywhere. Copy a secret only when you need to paste it somewhere.</p>
+    <div class="card"><div class="grid2" style="margin:0"><div><label>Name</label><input type="text" id="vName" placeholder="e.g. Meta CAPI token" autocomplete="off"></div><div><label>Value</label><input type="password" id="vValue" autocomplete="off"></div></div><div class="actions"><button class="btn" id="vAdd">Store secret</button></div></div>
+    <div id="vList" class="card"></div>
+  </section>
+
   <!-- CALCULATOR -->
   <section id="v-calc" class="view">
     <div class="bar"><h2>COD calculator</h2><a class="btn ghost" target="_blank" rel="noopener" href="https://bahakhmeissi.github.io/cod_calculator/">Open full page ↗</a></div>
@@ -69,9 +81,9 @@
   <!-- DATA -->
   <section id="v-data" class="view">
     <h2>Data</h2>
-    <p class="muted">Everything is saved in this browser only (coach notes, settings, products). Export a backup file to move it to another device or keep a copy.</p>
+    <p class="muted">Everything is saved <b>encrypted</b> in this browser only (coach notes, settings, products, vault). The backup file is encrypted too: you need the same passphrase to open it. If you forget the passphrase, the data cannot be recovered.</p>
     <div class="actions">
-      <button class="btn" id="exportAll">Export backup (JSON)</button>
+      <button class="btn" id="exportAll">Export encrypted backup</button>
       <button class="btn ghost" id="importAll">Import backup</button>
       <input type="file" id="jsonFile" accept=".json,application/json" hidden>
       <button class="btn danger" id="resetAll">Reset everything</button>
@@ -79,6 +91,7 @@
   </section>
 </main>
 
+<div id="lock" class="lockscreen" hidden><form id="lockForm" class="lockbox"><div class="logo" style="margin:0 auto 10px">B</div><h2 id="lockTitle"></h2><p id="lockMsg" class="muted"></p><div><label for="lockPass">Passphrase</label><input type="password" id="lockPass" required></div><div><label for="lockPass2">Repeat passphrase</label><input type="password" id="lockPass2" autocomplete="new-password"></div><p id="lockErr" class="flag" role="alert"></p><button class="btn" id="lockBtn" type="submit">Unlock</button></form></div>
 <div id="modal" class="modal" hidden><div class="sheet"><div class="sheethead"><b id="mTitle"></b><button class="x" id="mClose" aria-label="Close">×</button></div><div id="mBody"></div></div></div>
 <div id="toast" class="toast" hidden></div>
 <script src="app.js"></script>
