@@ -69,3 +69,6 @@ a{color:#93c5fd}
 .lockbox{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px;display:grid;gap:12px;text-align:center}.lockbox label{text-align:left}.lockbox [hidden]{display:none}
 .vrow{display:grid;grid-template-columns:1fr 2fr auto auto auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
 @media (max-width:640px){.vrow{grid-template-columns:1fr 1fr}.vrow input{grid-column:1/-1}}
+
+.pill.work{color:#bfdbfe}
+#lockForm .btn+.btn{margin-top:-4px}

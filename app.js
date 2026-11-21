@@ -43,12 +43,13 @@ const DEFAULTS={
  rows:[],vault:[]
 };
 let S=null,CK=null,SALT=null;
-const VKEY="bek_agents_vault_v2";
+const VKEY="bek_agents_vault_v2",SYNCKEY="bek_agents_last_sync";
+const GCLIENT="843142093633-e9juu9mqkk9so4o1pp9qmvg8pf37d7lk.apps.googleusercontent.com";
 const te=new TextEncoder(),td=new TextDecoder();
 const b64=a=>{const u=new Uint8Array(a);let o="";for(let i=0;i<u.length;i+=8192)o+=String.fromCharCode.apply(null,u.subarray(i,i+8192));return btoa(o);};
 const unb64=t=>Uint8Array.from(atob(t),c=>c.charCodeAt(0));
 async function deriveKey(pass,salt){const km=await crypto.subtle.importKey("raw",te.encode(pass),"PBKDF2",false,["deriveKey"]);return crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:310000,hash:"SHA-256"},km,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);}
-async function encryptState(){const iv=crypto.getRandomValues(new Uint8Array(12));const ct=await crypto.subtle.encrypt({name:"AES-GCM",iv},CK,te.encode(JSON.stringify(S)));localStorage.setItem(VKEY,JSON.stringify({v:2,salt:b64(SALT),iv:b64(iv),data:b64(ct)}));}
+async function encryptState(){const iv=crypto.getRandomValues(new Uint8Array(12));const ct=await crypto.subtle.encrypt({name:"AES-GCM",iv},CK,te.encode(JSON.stringify(S)));localStorage.setItem(VKEY,JSON.stringify({v:2,ts:Date.now(),salt:b64(SALT),iv:b64(iv),data:b64(ct)}));pushSoon();}
 async function decryptState(pass){const o=JSON.parse(localStorage.getItem(VKEY));SALT=unb64(o.salt);CK=await deriveKey(pass,SALT);const pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:unb64(o.iv)},CK,unb64(o.data));return norm(JSON.parse(td.decode(pt)));}
 function norm(r){const d=structuredClone(DEFAULTS);if(!r||typeof r!=="object")return d;return {...d,...r,settings:{...d.settings,...(r.settings||{}),sources:{...d.settings.sources,...((r.settings||{}).sources||{})}},status:{...d.status,...(r.status||{})},rows:Array.isArray(r.rows)?r.rows:[],vault:Array.isArray(r.vault)?r.vault:[],notes:r.notes||{}};}
 let saveQ=Promise.resolve();
@@ -56,6 +57,62 @@ function save(){clearTimeout(save.t);save.t=setTimeout(flush,150);}
 function flush(){clearTimeout(save.t);if(!CK||!S)return saveQ;saveQ=saveQ.then(encryptState).catch(()=>toast("Could not save in this browser"));return saveQ;}
 document.addEventListener("visibilitychange",()=>{if(document.hidden)flush();});
 window.addEventListener("pagehide",flush);
+
+/* ---------- Google Drive encrypted backup (appDataFolder, ciphertext only) ---------- */
+const DRV="https://www.googleapis.com/drive/v3",UPL="https://www.googleapis.com/upload/drive/v3",FNAME="bek-vault.json";
+let gTok=null,gExp=0,pushT=null,syncing=false;
+const gReady=()=>GCLIENT&&!GCLIENT.startsWith("REPLACE");
+const gValid=()=>gTok&&Date.now()<gExp;
+function loadGIS(){return new Promise((res,rej)=>{if(window.google&&google.accounts&&google.accounts.oauth2)return res();const x=document.createElement("script");x.src="https://accounts.google.com/gsi/client";x.onload=res;x.onerror=()=>rej(new Error("Could not load Google sign-in"));document.head.appendChild(x);});}
+async function gAuth(){await loadGIS();return new Promise((res,rej)=>{const c=google.accounts.oauth2.initTokenClient({client_id:GCLIENT,scope:"https://www.googleapis.com/auth/drive.appdata",callback:r=>{if(r.error){rej(new Error(r.error));return;}gTok=r.access_token;gExp=Date.now()+((+r.expires_in||3600)-90)*1000;setPill();res();},error_callback:e=>rej(new Error((e&&e.type)||"auth_failed"))});c.requestAccessToken({prompt:gTok?"":"consent"});});}
+async function gFetch(url,opt={}){const r=await fetch(url,{...opt,headers:{...(opt.headers||{}),Authorization:"Bearer "+gTok}});if(r.status===401){gTok=null;setPill();throw new Error("Google session expired. Connect again.");}if(!r.ok)throw new Error("Drive error "+r.status);return r;}
+async function remoteMeta(){const q=encodeURIComponent("name='"+FNAME+"'");const r=await gFetch(DRV+"/files?spaces=appDataFolder&fields=files(id,modifiedTime)&q="+q);const j=await r.json();return (j.files||[])[0]||null;}
+async function remoteGet(id){const r=await gFetch(DRV+"/files/"+id+"?alt=media");return JSON.parse(await r.text());}
+async function remotePut(id,text){
+  if(id){await gFetch(UPL+"/files/"+id+"?uploadType=media",{method:"PATCH",headers:{"Content-Type":"application/json"},body:text});return;}
+  const bd="bekbound"+uid();const meta=JSON.stringify({name:FNAME,parents:["appDataFolder"]});
+  const body="--"+bd+"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"+meta+"\r\n--"+bd+"\r\nContent-Type: application/json\r\n\r\n"+text+"\r\n--"+bd+"--";
+  await gFetch(UPL+"/files?uploadType=multipart",{method:"POST",headers:{"Content-Type":"multipart/related; boundary="+bd},body});
+}
+const lastSync=()=>+(localStorage.getItem(SYNCKEY)||0);
+function pill(t,cls){const p=$("#syncPill");if(p){p.textContent=t;p.className="pill "+(cls||"");}}
+function setPill(){if(!gReady())return pill("Drive: not set up");if(!gValid())return pill("Drive: connect","wait");pill("Drive: synced","on");}
+function pushSoon(){if(!gValid()||syncing)return;clearTimeout(pushT);pushT=setTimeout(()=>syncNow(false).catch(()=>{}),4000);}
+// interactive = user clicked; allowed to open the Google popup and to ask about conflicts
+async function syncNow(interactive){
+  if(!gReady()){toast("Google Drive is not set up yet");return;}
+  if(syncing)return;syncing=true;
+  try{
+    if(!gValid()){if(!interactive){pill("Drive: connect","wait");return;}await gAuth();}
+    pill("Drive: syncing…","work");await flush();
+    const localTxt=localStorage.getItem(VKEY);const local=localTxt?JSON.parse(localTxt):null;
+    const meta=await remoteMeta();
+    if(!meta){if(local){await remotePut(null,localTxt);localStorage.setItem(SYNCKEY,String(local.ts||Date.now()));}setPill();if(interactive)toast("Backed up to Google Drive");return;}
+    const remote=await remoteGet(meta.id);const rts=+remote.ts||0,lts=local?+local.ts||0:0,ls=lastSync();
+    if(rts>ls&&rts!==lts){
+      const localChanged=lts>ls;
+      if(!interactive){pill("Drive: newer data, click to sync","wait");return;}
+      if(localChanged&&!confirm("Drive has newer data from another device, and this device also changed.\n\nOK = load the Drive version (this device's recent changes are lost).\nCancel = keep this device and overwrite Drive.")){
+        await remotePut(meta.id,localTxt);localStorage.setItem(SYNCKEY,String(lts));setPill();toast("Drive overwritten with this device's data");return;}
+      // load remote: it must decrypt with the current key
+      try{const pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:unb64(remote.iv)},CK,unb64(remote.data));S=norm(JSON.parse(td.decode(pt)));SALT=unb64(remote.salt);
+        localStorage.setItem(VKEY,JSON.stringify(remote));localStorage.setItem(SYNCKEY,String(rts));setPill();show(currentView());toast("Loaded the newer data from Drive");return;}
+      catch(e){pill("Drive: different passphrase","wait");toast("The Drive backup was made with a different passphrase.");return;}
+    }
+    if(lts>rts){await remotePut(meta.id,localTxt);localStorage.setItem(SYNCKEY,String(lts));if(interactive)toast("Backed up to Google Drive");}
+    else if(interactive)toast("Already up to date");
+    setPill();
+  }catch(e){pill("Drive: "+(e.message||"error"),"wait");if(interactive)toast(e.message||"Drive sync failed");}
+  finally{syncing=false;}
+}
+// New device: fetch the encrypted vault from Drive before unlocking (needs a user click)
+async function restoreFromDrive(){
+  if(!gReady())throw new Error("Google Drive is not set up yet.");
+  await gAuth();const meta=await remoteMeta();if(!meta)throw new Error("No backup found in this Google account's Drive.");
+  const remote=await remoteGet(meta.id);if(!remote||remote.v!==2)throw new Error("The backup file is not valid.");
+  localStorage.setItem(VKEY,JSON.stringify(remote));localStorage.setItem(SYNCKEY,String(+remote.ts||0));
+}
+const currentView=()=>{const o=$$(".view.on")[0];return o?o.id.slice(2):"room";};
 
 /* ---------- helpers ---------- */
 function toast(t){const el=$("#toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2200);}
@@ -216,6 +273,7 @@ function init(){
   $("#importAll").onclick=()=>$("#jsonFile").click();
   $("#jsonFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const o=JSON.parse(String(rd.result));if(!o||o.v!==2||!o.salt||!o.iv||!o.data)throw 0;if(!confirm("Replace the data in this browser with this backup? You will unlock it with the passphrase it was made with."))return;localStorage.setItem(VKEY,JSON.stringify(o));location.reload();}catch(_){toast("That file is not an encrypted backup from this app");}};rd.readAsText(f);e.target.value="";};
   $("#resetAll").onclick=()=>{if(confirm("Erase ALL notes, settings, products and vault secrets in this browser? This cannot be undone.")){localStorage.removeItem(VKEY);localStorage.removeItem(KEY);location.reload();}};
+  $("#syncBtn").onclick=()=>syncNow(true);$("#syncPill").onclick=()=>syncNow(true);setPill();
   $("#lockNow").onclick=()=>{flush().then(()=>location.reload());};
   $("#vAdd").onclick=()=>{const n=$("#vName").value.trim(),v=$("#vValue").value;if(!n||!v){toast("Enter a name and a value");return;}S.vault.push({id:uid(),name:n,value:v});$("#vName").value="";$("#vValue").value="";save();renderVault();toast("Stored (encrypted)");};
   const h=(location.hash||"#room").slice(1);show(["room","board","settings","vault","calc","data"].includes(h)?h:"room");
@@ -236,6 +294,7 @@ async function start(){
   const has=!!localStorage.getItem(VKEY);
   $("#lockTitle").textContent=has?"Unlock":"Create your passphrase";
   $("#lockMsg").textContent=has?"Enter your passphrase to open the platform.":"This passphrase encrypts everything on this device. It is never sent anywhere and cannot be recovered. Use 12+ characters.";
+  $("#restoreBtn").hidden=has||!gReady();$("#restoreBtn").onclick=async()=>{err.textContent="";try{await restoreFromDrive();location.reload();}catch(ex){err.textContent=ex.message||"Restore failed.";}};
   p2.parentElement.hidden=has;p1.autocomplete=has?"current-password":"new-password";
   lock.hidden=false;p1.focus();
   await new Promise(resolve=>{

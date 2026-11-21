@@ -6,7 +6,7 @@
 <title>BEK Agents Platform</title>
 <meta name="theme-color" content="#0b1220">
 <meta name="robots" content="noindex,nofollow">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src https://bahakhmeissi.github.io; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src https://bahakhmeissi.github.io https://accounts.google.com; connect-src https://www.googleapis.com https://accounts.google.com; base-uri 'none'; form-action 'none'">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d4ed8'/%3E%3Ctext x='32' y='42' font-size='30' text-anchor='middle' fill='white' font-family='Arial' font-weight='700'%3EB%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -20,6 +20,7 @@
     <button data-v="vault">Vault</button>
     <button data-v="calc">Calculator</button>
     <button data-v="data">Data</button>
+    <button id="syncPill" class="pill" title="Google Drive backup status. Click to sync" style="cursor:pointer;margin:0 4px">Drive</button>
     <button id="lockNow" title="Lock now">🔒 Lock</button>
   </nav>
 </header>
@@ -81,6 +82,7 @@
   <!-- DATA -->
   <section id="v-data" class="view">
     <h2>Data</h2>
+    <div class="card"><h3>Google Drive backup</h3><p class="muted">An encrypted copy of your data is kept in a hidden app folder of your own Google Drive (only this app can see it). Google only ever stores the encrypted file, never your passphrase. Click to sync now. On a new device, open the platform and choose “Restore from Google Drive”, then enter the same passphrase.</p><div class="actions"><button class="btn" id="syncBtn">Connect and sync now</button></div></div>
     <p class="muted">Everything is saved <b>encrypted</b> in this browser only (coach notes, settings, products, vault). The backup file is encrypted too: you need the same passphrase to open it. If you forget the passphrase, the data cannot be recovered.</p>
     <div class="actions">
       <button class="btn" id="exportAll">Export encrypted backup</button>
@@ -91,7 +93,7 @@
   </section>
 </main>
 
-<div id="lock" class="lockscreen" hidden><form id="lockForm" class="lockbox"><div class="logo" style="margin:0 auto 10px">B</div><h2 id="lockTitle"></h2><p id="lockMsg" class="muted"></p><div><label for="lockPass">Passphrase</label><input type="password" id="lockPass" required></div><div><label for="lockPass2">Repeat passphrase</label><input type="password" id="lockPass2" autocomplete="new-password"></div><p id="lockErr" class="flag" role="alert"></p><button class="btn" id="lockBtn" type="submit">Unlock</button></form></div>
+<div id="lock" class="lockscreen" hidden><form id="lockForm" class="lockbox"><div class="logo" style="margin:0 auto 10px">B</div><h2 id="lockTitle"></h2><p id="lockMsg" class="muted"></p><div><label for="lockPass">Passphrase</label><input type="password" id="lockPass" required></div><div><label for="lockPass2">Repeat passphrase</label><input type="password" id="lockPass2" autocomplete="new-password"></div><p id="lockErr" class="flag" role="alert"></p><button class="btn" id="lockBtn" type="submit">Unlock</button><button class="btn ghost" id="restoreBtn" type="button" hidden>Restore from Google Drive</button></form></div>
 <div id="modal" class="modal" hidden><div class="sheet"><div class="sheethead"><b id="mTitle"></b><button class="x" id="mClose" aria-label="Close">×</button></div><div id="mBody"></div></div></div>
 <div id="toast" class="toast" hidden></div>
 <script src="app.js"></script>
