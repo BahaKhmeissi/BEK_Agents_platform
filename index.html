@@ -6,9 +6,9 @@
 <title>BEK Agents Platform</title>
 <meta name="theme-color" content="#0b1220">
 <meta name="robots" content="noindex,nofollow">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src https://bahakhmeissi.github.io https://accounts.google.com; connect-src https://www.googleapis.com https://accounts.google.com; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src https://bahakhmeissi.github.io https://accounts.google.com; connect-src https://www.googleapis.com https://accounts.google.com https://api.anthropic.com; base-uri 'none'; form-action 'none'">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d4ed8'/%3E%3Ctext x='32' y='42' font-size='30' text-anchor='middle' fill='white' font-family='Arial' font-weight='700'%3EB%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <header class="top">
@@ -96,6 +96,6 @@
 <div id="lock" class="lockscreen" hidden><form id="lockForm" class="lockbox"><div class="logo" style="margin:0 auto 10px">B</div><h2 id="lockTitle"></h2><p id="lockMsg" class="muted"></p><div><label for="lockPass">Passphrase</label><input type="password" id="lockPass" required></div><div><label for="lockPass2">Repeat passphrase</label><input type="password" id="lockPass2" autocomplete="new-password"></div><p id="lockErr" class="flag" role="alert"></p><button class="btn" id="lockBtn" type="submit">Unlock</button><button class="btn ghost" id="restoreBtn" type="button" hidden>Restore from Google Drive</button></form></div>
 <div id="modal" class="modal" hidden><div class="sheet"><div class="sheethead"><b id="mTitle"></b><button class="x" id="mClose" aria-label="Close">×</button></div><div id="mBody"></div></div></div>
 <div id="toast" class="toast" hidden></div>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

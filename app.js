@@ -148,6 +148,47 @@ function brief(id,rows){
 }
 const testRows=()=>S.rows.filter(r=>r.decision==="Test");
 
+
+/* ---------- run with Claude (API key from the encrypted vault) ---------- */
+const MODEL="claude-sonnet-5-5";
+function apiKey(){const k=S.vault.find(x=>/anthropic|claude/i.test(x.name));return k?String(k.value).trim():"";}
+async function askClaude(prompt){
+  const key=apiKey();if(!key)throw new Error('Add your Anthropic API key in the Vault (name it "Anthropic API key").');
+  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"content-type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:MODEL,max_tokens:4096,messages:[{role:"user",content:prompt}]})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error((j.error&&j.error.message)||("API error "+r.status));
+  return (j.content||[]).map(b=>b.text||"").join("").trim();
+}
+const NOBROWSE="\n\nYou cannot browse or open links here: work only from the data above, state your assumptions, and keep it concise and specific.";
+function showOutput(title,text){
+  $("#mTitle").textContent=title;
+  $("#mBody").innerHTML=`<textarea id="outTxt" style="min-height:340px;width:100%"></textarea><div class="actions"><button class="btn" id="outCopy">Copy</button><button class="btn ghost" id="outClose">Close</button></div>`;
+  $("#outTxt").value=text;$("#outCopy").onclick=()=>copy(text);$("#outClose").onclick=closeModal;$("#modal").hidden=false;
+}
+async function runPricer(rows){
+  if(!rows.length){toast("No Test products waiting for pricing");return;}
+  toast("Calc is pricing "+rows.length+" product(s)…");
+  try{
+    const out=await askClaude(brief("pricer",rows)+NOBROWSE+'\n\nReturn ONLY a JSON array with one object per product, in the same order: [{"pricing":"selling price, 1/2/3 piece offers, profit per delivered order, break-even CPL, assumptions, risk"}]');
+    let arr=null;try{arr=JSON.parse(out.slice(out.indexOf("["),out.lastIndexOf("]")+1));}catch(e){}
+    if(Array.isArray(arr)&&arr.length===rows.length){rows.forEach((r,i)=>{const v=arr[i]&&arr[i].pricing;r.pricing=typeof v==="string"?v:JSON.stringify(v);});save();renderBoard();renderPipeline();toast("Calc finished. Pricing saved on the board.");}
+    else showOutput("Calc result (could not split per product)",out);
+  }catch(e){toast("Calc failed: "+e.message);}
+}
+async function runPlanner(){
+  const rows=testRows().filter(r=>r.pricing&&r.creativesReady);
+  if(!rows.length){toast("Nothing ready: a product needs pricing and creatives ready");return;}
+  toast("Blueprint is working…");
+  try{showOutput("Blueprint: campaign structure",await askClaude(brief("planner",rows)+NOBROWSE));}catch(e){toast("Blueprint failed: "+e.message);}
+}
+function runAnalyst(){
+  $("#mTitle").textContent="Lens: paste your Meta data";
+  $("#mBody").innerHTML=`<label>Paste campaign data (export, table, numbers)</label><textarea id="anData" style="min-height:260px;width:100%" placeholder="Campaign / ad set / ad, spend, results, CPL, CTR, frequency, 3s plays…"></textarea><div class="actions"><button class="btn" id="anRun">Analyze</button><button class="btn ghost" id="anClose">Close</button></div>`;
+  $("#anClose").onclick=closeModal;$("#modal").hidden=false;
+  $("#anRun").onclick=async()=>{const d=$("#anData").value.trim();if(!d){toast("Paste some data first");return;}$("#anRun").textContent="Analyzing…";
+    try{showOutput("Lens: analysis",await askClaude(brief("analyst",[]).replace("Data: [paste or attach]","Data:\n"+d)+NOBROWSE));}catch(e){toast("Lens failed: "+e.message);$("#anRun").textContent="Analyze";}};
+}
+
 /* ---------- 3D character ---------- */
 function charSVG(a){
   const c=a.color;
@@ -187,7 +228,7 @@ function renderAgents(){
       <p class="role">${esc(a.role)}</p>
       <div><label>Status</label><select data-st>${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${S.status[a.id]===k?"selected":""}>${v[0]}</option>`).join("")}</select></div>
       <div><label>Coach notes (how to sharpen ${esc(a.name)})</label><textarea data-notes placeholder="Add rules, examples, things to avoid, lessons from last run…">${esc(S.notes[a.id]||"")}</textarea></div>
-      <div class="row"><button class="btn sm" data-copy>Copy brief</button>${a.id==="scout"?'<button class="btn ghost sm" data-go="settings">Scout settings</button>':""}${a.id==="pricer"?'<button class="btn ghost sm" data-go="calc">Calculator</button>':""}${["pricer","swiper","planner"].includes(a.id)?'<button class="btn ghost sm" data-go="board">Open board</button>':""}</div>`;
+      <div class="row"><button class="btn sm" data-copy>Copy brief</button>${a.id==="scout"?'<button class="btn ghost sm" data-go="settings">Scout settings</button>':""}${a.id==="pricer"?'<button class="btn ghost sm" data-go="calc">Calculator</button>':""}${["pricer","swiper","planner"].includes(a.id)?'<button class="btn ghost sm" data-go="board">Open board</button>':""}${["pricer","planner","analyst"].includes(a.id)?'<button class="btn sm" data-run>Run with Claude</button>':""}</div>`;
     wireTilt($(".stage",el));
     $("[data-st]",el).onchange=e=>{S.status[a.id]=e.target.value;save();renderAgents();};
     $("[data-notes]",el).oninput=e=>{S.notes[a.id]=e.target.value;save();};
@@ -197,6 +238,7 @@ function renderAgents(){
       if(a.id==="planner")rows=testRows().filter(r=>r.pricing&&r.creativesReady);
       copy(brief(a.id,rows));
     };
+    const rb=$("[data-run]",el);if(rb)rb.onclick=()=>{if(a.id==="pricer")runPricer(testRows().filter(r=>!r.pricing));else if(a.id==="planner")runPlanner();else runAnalyst();};
     $$("[data-go]",el).forEach(b=>b.onclick=()=>show(b.dataset.go));
     root.appendChild(el);
   });
@@ -210,7 +252,7 @@ function renderBoard(){
   t.innerHTML=`<thead><tr><th>Product</th><th>Niche</th><th>Market</th><th>Days</th><th>Creatives</th><th>Rule</th><th>Alibaba</th><th>Weight</th><th>Decision</th><th>Status</th><th></th></tr></thead><tbody>`+
   S.rows.map(r=>{const k=rule(r);const ok=k.days&&k.creatives;return `<tr data-id="${r.id}"><td><b>${esc(r.name||"(unnamed)")}</b></td><td>${esc(r.niche)}</td><td>${esc(r.market)}</td><td>${esc(r.days)}</td><td>${esc(r.creatives)}</td><td>${ok?'<span class="ok">✓ passes</span>':`<span class="flag">${!k.days?"days ":""}${!k.creatives?"creatives":""} below</span>`}</td><td>${esc(r.price)}</td><td>${esc(r.weight)}</td><td><select data-dec><option value="">—</option>${["Test","Maybe","Skip"].map(v=>`<option ${r.decision===v?"selected":""}>${v}</option>`).join("")}</select></td><td><span class="tag ${esc(r.decision||"")}">${statusOf(r)}</span></td><td><button class="btn ghost sm" data-open>Open</button></td></tr>`;}).join("")+`</tbody>`;
   $$("tr[data-id]",t).forEach(tr=>{const r=S.rows.find(x=>x.id===tr.dataset.id);
-    $("[data-dec]",tr).onchange=e=>{r.decision=e.target.value;save();renderBoard();renderPipeline();if(r.decision==="Test"){S.status.pricer="waiting";save();toast("Marked Test. Copy the Pricing brief from the control room.");}};
+    $("[data-dec]",tr).onchange=e=>{r.decision=e.target.value;save();renderBoard();renderPipeline();if(r.decision==="Test"){if(apiKey()&&!r.pricing)runPricer([r]);else{S.status.pricer="waiting";save();toast("Marked Test. Add your Anthropic API key in the Vault so Calc runs by itself, or copy the Pricing brief.");}}};
     $("[data-open]",tr).onclick=()=>openRow(r);});
 }
 function openRow(r){
@@ -223,7 +265,7 @@ function openRow(r){
   <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-c="creativesReady" ${r.creativesReady?"checked":""}> Creatives ready</label><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-c="structureReady" ${r.structureReady?"checked":""}> Structure ready</label></div>
   <div class="actions"><button class="btn" id="mSave">Save</button><button class="btn ghost" id="mPrice">Copy pricing brief</button><button class="btn ghost" id="mCre">Copy creative brief</button><button class="btn danger" id="mDel">Delete</button></div>`;
   const collect=()=>{$$("[data-k]",$("#mBody")).forEach(el=>r[el.dataset.k]=el.value);$$("[data-c]",$("#mBody")).forEach(el=>r[el.dataset.c]=el.checked);};
-  $("#mSave").onclick=()=>{collect();save();closeModal();renderBoard();renderPipeline();toast("Saved");};
+  $("#mSave").onclick=()=>{const was=r.decision;collect();save();closeModal();renderBoard();renderPipeline();toast("Saved");if(was!=="Test"&&r.decision==="Test"&&!r.pricing&&apiKey())runPricer([r]);};
   $("#mPrice").onclick=()=>{collect();save();copy(brief("pricer",[r]));};
   $("#mCre").onclick=()=>{collect();save();copy(brief("swiper",[r]));};
   $("#mDel").onclick=()=>{if(confirm("Delete this product?")){S.rows=S.rows.filter(x=>x.id!==r.id);save();closeModal();renderBoard();renderPipeline();}};
